@@ -80,7 +80,8 @@ contract CounterTest is Test {
 
     }
 
-    function test_play() public {
+    function test_play(uint256 iters) public {
+        vm.assume(iters>0 && iters<100);
         vm.prank(addr4);
         uint256 gameInd = Game(gameAddress).startNewGame();
         uint256 init_bal1=ERC20(coinAddress).balanceOf(addr1);
@@ -91,7 +92,7 @@ contract CounterTest is Test {
         vm.prank(addr2);
         Game(gameAddress).joinGame(gameInd);
         address winner = address(0);
-        for(uint256 i=0;i<25;i++){
+        for(uint256 i=0;i<iters;i++){
             vm.prank(addr1);
             winner = Game(gameAddress).play(gameInd); 
             if(winner == address(0)){
@@ -108,7 +109,7 @@ contract CounterTest is Test {
         assertEq(bal1+bal2+balGame, init_bal1+init_bal2+init_balGame);
     }
 
-    function test_playToWin() private {
+    function test_playToWin() public {
         vm.prank(addr4);
         uint256 gameInd = Game(gameAddress).startNewGame();
         uint256 init_bal1=ERC20(coinAddress).balanceOf(addr1);
@@ -119,16 +120,40 @@ contract CounterTest is Test {
         vm.prank(addr2);
         Game(gameAddress).joinGame(gameInd);
         address winner = address(0);
-        while(winner == address(0)){
+        uint256 cnt = 0;
+        while(winner == address(0) && cnt < 10000){
             vm.prank(addr1);
             winner = (Game(gameAddress).play(gameInd));
-            vm.prank(addr2);
-            winner = (Game(gameAddress).play(gameInd));
+            if(winner == address(0)){
+                vm.prank(addr2);
+                winner = (Game(gameAddress).play(gameInd));
+            }
+            else{
+                break;
+            }
+            cnt++;
         }
         uint256 bal1=ERC20(coinAddress).balanceOf(addr1);
         uint256 bal2=ERC20(coinAddress).balanceOf(addr2);
         uint256 balGame=ERC20(coinAddress).balanceOf(gameAddress);
         assertEq(bal1+bal2+balGame, init_bal1+init_bal2+init_balGame);
+    }
+
+    function test_playWithoutTurn() public {
+        vm.prank(addr4);
+        uint256 gameInd = Game(gameAddress).startNewGame();
+        vm.prank(addr1);
+        Game(gameAddress).joinGame(gameInd);
+        vm.prank(addr2);
+        Game(gameAddress).joinGame(gameInd);
+        address winner = address(0);
+        vm.prank(addr1);
+        winner = (Game(gameAddress).play(gameInd));
+        if(winner == address(0)){
+            vm.expectRevert(abi.encodeWithSelector(Game.NotYourTurn.selector, addr1, addr2));
+            vm.prank(addr1);
+            winner = (Game(gameAddress).play(gameInd));
+        }
     }
     
     function test_updateEntryFees(uint256 fee) public {

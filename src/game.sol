@@ -78,11 +78,11 @@ contract Game is ReentrancyGuard{
 
     function joinGame(uint256 gameNum) public nonReentrant returns(uint256[5][5] memory){
         require(msg.sender != address(0), InvalidAddress());
-        require((gameNo == 0 || gameNum == 0 || gameNum > gameNo || games[gameNum].status != GameStatus.DoesNotExist),GameDoesNotExist(gameNum));
+        require((gameNo == 0 || gameNum == 0 || games[gameNum].status != GameStatus.DoesNotExist),GameDoesNotExist(gameNum));
         require(games[gameNum].status != GameStatus.BeingPlayed,GameAlreadyBeingPlayed(gameNum));
         require(games[gameNum].status != GameStatus.GameOver,GameOverAlready(gameNum));
         require(block.timestamp <= games[gameNum].startTime+startDuration, JoiningTimeOver());
-        require(!existsInGame(gameNum, msg.sender),AlreadyJoined());
+        require(!existsInGame(gameNum, msg.sender), AlreadyJoined());
         
         bool received = ERC20(coins).transferFrom(msg.sender,address(this),entryFees);
         require(received, EntryFeeNotPaid());
