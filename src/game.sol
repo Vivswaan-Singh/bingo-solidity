@@ -78,7 +78,7 @@ contract Game is ReentrancyGuard{
 
     function joinGame(uint256 gameNum) public nonReentrant returns(uint256[5][5] memory){
         require(msg.sender != address(0), InvalidAddress());
-        require((gameNo == 0 || gameNum == 0 || games[gameNum].status != GameStatus.DoesNotExist),GameDoesNotExist(gameNum));
+        require((gameNo != 0 || gameNum != 0 || games[gameNum].status != GameStatus.DoesNotExist),GameDoesNotExist(gameNum));
         require(games[gameNum].status != GameStatus.BeingPlayed,GameAlreadyBeingPlayed(gameNum));
         require(games[gameNum].status != GameStatus.GameOver,GameOverAlready(gameNum));
         require(block.timestamp <= games[gameNum].startTime+startDuration, JoiningTimeOver());
