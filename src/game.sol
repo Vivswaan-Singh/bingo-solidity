@@ -16,6 +16,7 @@ contract Game is ReentrancyGuard{
         address[] players;
         mapping(address => player) playerInfo;
         address[] winners;
+        address winner;
         uint256 status;
     }
     
@@ -30,9 +31,11 @@ contract Game is ReentrancyGuard{
     error NotAdmin();
     error EntryFeeNotPaid();
     error JoiningTimeOver();
-    error GameNoLongerActive(uint256 gameNum);
+    error GameNotActive(uint256 gameNum);
     error GameDoesNotExist(uint256 gameNum);
     error GameAlreadyBeingPlayed(uint256 gameNum);
+    error GameNotStarted(uint256 gameNum);
+    error GameOverAlready(uint256 gameNum);
 
 
     event newGame(uint256 gameNo); 
@@ -41,6 +44,7 @@ contract Game is ReentrancyGuard{
     event checker(bool[5][5] flag);
     event madeTrue(); 
     event eqCheck(uint256 val, uint256 arrVal);
+    
 
 
     constructor(address _coins) {
@@ -60,6 +64,7 @@ contract Game is ReentrancyGuard{
     function joinGame(uint256 gameNum) public nonReentrant returns(uint256[5][5] memory){
         require(games[gameNum].status!=0,GameDoesNotExist(gameNum));
         require(games[gameNum].status!=2,GameAlreadyBeingPlayed(gameNum));
+        require(games[gameNum].status!=3,GameOverAlready(gameNum));
         require(block.timestamp<=games[gameNum].startTime+startDuration, JoiningTimeOver());
         bool received = ERC20(coins).transferFrom(msg.sender,address(this),entryFees);
         require(received, EntryFeeNotPaid());
@@ -80,7 +85,8 @@ contract Game is ReentrancyGuard{
     }
 
     function play(uint256 gameNum) public nonReentrant returns(bool) {
-        require(games[gameNum].status!=0,GameNoLongerActive(gameNum));
+        require(games[gameNum].status!=0,GameDoesNotExist(gameNum));
+        require(games[gameNum].status!=3,GameOverAlready(gameNum));
         games[gameNum].status=2;
         address[] memory players = games[gameNum].players;
         uint256 col = generateCol(gameNum);
@@ -93,10 +99,11 @@ contract Game is ReentrancyGuard{
             }
             bool flag=checkBox(gameNum,players[k]);
             if(flag){
+                games[gameNum].winner=players[k];
+                games[gameNum].status=3;
                 ERC20(coins).transfer(players[k],entryFees*players.length);
                 k=players.length+1;
                 emit newPlay(col, val, flag);
-                k=players.length+1;
                 return flag;
             }
         }
