@@ -8,7 +8,7 @@ contract Game is ReentrancyGuard{
     
     struct player{
         uint256[5][5] box;
-        bool[5][5] check;
+        uint256 bitCheck;
     }
 
     enum GameStatus{
@@ -24,7 +24,7 @@ contract Game is ReentrancyGuard{
         address[] players;
         mapping(address => player) playerInfo;
         uint256 currPlayerInd;
-        address[] winners;
+        uint256 numOfRounds;
         address winner;
         GameStatus status;
     }
@@ -32,7 +32,7 @@ contract Game is ReentrancyGuard{
     address admin;
     uint256 entryFees = 10;
     uint256 turnDuration=10;
-    uint256 startDuration=10000000000000000000;
+    uint256 startDuration=0;
     uint256 gameNo;
     address coins;
     mapping(uint256 => game) games;
@@ -68,6 +68,7 @@ contract Game is ReentrancyGuard{
         games[gameNo].startTime=block.timestamp;
         games[gameNo].status=GameStatus.NoPlayers;
         games[gameNo].currPlayerInd=0;
+        games[gameNo].numOfRounds=0;
         emit newGame(gameNo);
         return gameNo;
     }
@@ -76,18 +77,12 @@ contract Game is ReentrancyGuard{
         require(games[gameNum].status!=GameStatus.DoesNotExist,GameDoesNotExist(gameNum));
         require(games[gameNum].status!=GameStatus.BeingPlayed,GameAlreadyBeingPlayed(gameNum));
         require(games[gameNum].status!=GameStatus.GameOver,GameOverAlready(gameNum));
-        require(block.timestamp<=games[gameNum].startTime+startDuration, JoiningTimeOver());
+        require(block.timestamp>=games[gameNum].startTime+startDuration, JoiningTimeOver());
         bool received = ERC20(coins).transferFrom(msg.sender,address(this),entryFees);
         require(received, EntryFeeNotPaid());
         generateBox(msg.sender,gameNum);
         games[gameNum].players.push(msg.sender);
-        games[gameNum].playerInfo[msg.sender].check=[[false,false,false,false,false],
-                                                    [false,false,false,false,false],
-                                                    [false,false,true,false,false],
-                                                    [false,false,false,false,false],
-                                                    [false,false,false,false,false]
-                                                ];
-        
+        games[gameNum].playerInfo[msg.sender].bitCheck = (1 << 12);
 
         emit newPlayer(games[gameNum].playerInfo[msg.sender].box);
         games[gameNum].status=GameStatus.NotBeingPlayedYet;
@@ -107,7 +102,7 @@ contract Game is ReentrancyGuard{
         for(uint256 k=0;k<noOfPlayers;k++){
             for(uint256 i=0;i<5;i++){
                 if(games[gameNum].playerInfo[players[k]].box[i][col]==val){
-                    games[gameNum].playerInfo[players[k]].check[i][col]=true;
+                    games[gameNum].playerInfo[players[k]].bitCheck |= (1 << ((i*5)+col));
                 }
             }
             bool flag=checkBox(gameNum,players[k]);
@@ -120,6 +115,7 @@ contract Game is ReentrancyGuard{
                 return flag;
             }
         }
+        games[gameNum].numOfRounds+=1;
         games[gameNum].currPlayerInd+=1;
         games[gameNum].currPlayerInd%=noOfPlayers;
         emit newPlay(col, val, false);
@@ -165,27 +161,28 @@ contract Game is ReentrancyGuard{
     }
 
     function checkBox(uint256 gameNum, address currPlayer) public view returns(bool){
-        bool[5][5] memory flag = games[gameNum].playerInfo[currPlayer].check;
+        uint256 mask = games[gameNum].playerInfo[currPlayer].bitCheck;
 
-        for(uint i=0;i<5;i++){
-            bool flagRow= flag[i][0] && flag[i][1] && flag[i][2] && flag[i][3] && flag[i][4];
-            if(flagRow){
+        for(uint256 i=0;i<21;i+=5){
+            uint256 flagRow= (mask & (1 << i) & (1 << i+1) & (1 << i+2) & (1 << i+3) & (1 << i+4)); 
+            if(flagRow>0){
                 return true;
             }
         }
 
-        for(uint i=0;i<5;i++){
-            bool flagRow= flag[0][i] && flag[1][i] && flag[2][i] && flag[3][i] && flag[4][i];
-            if(flagRow){
+
+        for(uint256 i=0;i<5;i++){
+            uint256 flagCol = (mask & (1 << i) & (1 << i+5) & (1 << i+10) & (1 << i+15) & (1 << i+20)); 
+            if(flagCol > 0){
                 return true;
             }
         }
 
-        if(flag[0][0] && flag[1][1] && flag[3][3] && flag[4][4]){
+        if((mask & (1) & (1 << 6) & (1 << 12) & (1 << 18) & (1 << 24)) > 0){
             return true;
         }
 
-        if(flag[0][4] && flag[1][3] && flag[3][1] && flag[4][0]){
+        if((mask & (1 << 4) & (1 << 8) & (1 << 12) & (1 << 16) & (1 << 20)) > 0){
             return true;
         }
 
