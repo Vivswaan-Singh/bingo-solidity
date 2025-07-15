@@ -31,8 +31,8 @@ contract Game is ReentrancyGuard{
     
     address admin;
     uint256 entryFees = 10;
-    uint256 turnDuration=10;
-    uint256 startDuration=0;
+    uint256 turnDuration=100;
+    uint256 startDuration=10000;
     uint256 gameNo;
     address coins;
     mapping(uint256 => game) games;
@@ -40,6 +40,7 @@ contract Game is ReentrancyGuard{
     error NotAdmin();
     error EntryFeeNotPaid();
     error JoiningTimeOver();
+    error InvalidAddress();
     error GameNotActive(uint256 gameNum);
     error GameDoesNotExist(uint256 gameNum);
     error GameAlreadyBeingPlayed(uint256 gameNum);
@@ -51,9 +52,6 @@ contract Game is ReentrancyGuard{
     event newGame(uint256 gameNo); 
     event newPlayer(uint256[5][5] arr);
     event newPlay(uint256 col,uint256 val,bool win);
-    event checker(bool[5][5] flag);
-    event madeTrue(); 
-    event eqCheck(uint256 val, uint256 arrVal);
     
 
 
@@ -74,10 +72,11 @@ contract Game is ReentrancyGuard{
     }
 
     function joinGame(uint256 gameNum) public nonReentrant returns(uint256[5][5] memory){
-        require(games[gameNum].status!=GameStatus.DoesNotExist,GameDoesNotExist(gameNum));
-        require(games[gameNum].status!=GameStatus.BeingPlayed,GameAlreadyBeingPlayed(gameNum));
-        require(games[gameNum].status!=GameStatus.GameOver,GameOverAlready(gameNum));
-        require(block.timestamp>=games[gameNum].startTime+startDuration, JoiningTimeOver());
+        require(msg.sender != address(0),InvalidAddress());
+        require(games[gameNum].status != GameStatus.DoesNotExist,GameDoesNotExist(gameNum));
+        require(games[gameNum].status != GameStatus.BeingPlayed,GameAlreadyBeingPlayed(gameNum));
+        require(games[gameNum].status != GameStatus.GameOver,GameOverAlready(gameNum));
+        require(block.timestamp<=games[gameNum].startTime+startDuration, JoiningTimeOver());
         bool received = ERC20(coins).transferFrom(msg.sender,address(this),entryFees);
         require(received, EntryFeeNotPaid());
         generateBox(msg.sender,gameNum);
@@ -90,7 +89,7 @@ contract Game is ReentrancyGuard{
 
     }
 
-    function play(uint256 gameNum) public nonReentrant returns(bool) {
+    function play(uint256 gameNum) public nonReentrant returns(address) {
         require(games[gameNum].status!=GameStatus.DoesNotExist,GameDoesNotExist(gameNum));
         require(games[gameNum].status!=GameStatus.GameOver,GameOverAlready(gameNum));
         require(msg.sender==games[gameNum].players[games[gameNum].currPlayerInd], NotYourTurn());
@@ -112,14 +111,14 @@ contract Game is ReentrancyGuard{
                 ERC20(coins).transfer(players[k],entryFees*noOfPlayers);
                 k=players.length+1;
                 emit newPlay(col, val, flag);
-                return flag;
+                return players[k];
             }
         }
         games[gameNum].numOfRounds+=1;
         games[gameNum].currPlayerInd+=1;
         games[gameNum].currPlayerInd%=noOfPlayers;
         emit newPlay(col, val, false);
-        return false;
+        return address(0);
     }
 
     function updateEntryFees(uint256 fees) public {
@@ -164,7 +163,7 @@ contract Game is ReentrancyGuard{
         uint256 mask = games[gameNum].playerInfo[currPlayer].bitCheck;
 
         for(uint256 i=0;i<21;i+=5){
-            uint256 flagRow= (mask & (1 << i) & (1 << i+1) & (1 << i+2) & (1 << i+3) & (1 << i+4)); 
+            uint256 flagRow= (mask & (1 << i) & (1 << (i+1)) & (1 << (i+2)) & (1 << (i+3)) & (1 << (i+4))); 
             if(flagRow>0){
                 return true;
             }
@@ -172,7 +171,7 @@ contract Game is ReentrancyGuard{
 
 
         for(uint256 i=0;i<5;i++){
-            uint256 flagCol = (mask & (1 << i) & (1 << i+5) & (1 << i+10) & (1 << i+15) & (1 << i+20)); 
+            uint256 flagCol = (mask & (1 << i) & (1 << (i+5)) & (1 << (i+10)) & (1 << (i+15)) & (1 << (i+20))); 
             if(flagCol > 0){
                 return true;
             }
@@ -199,6 +198,14 @@ contract Game is ReentrancyGuard{
 
     function getTurnDuration() external view returns(uint256){
         return turnDuration;
+    }
+
+    function getPlayers(uint256 gameNum) public view returns(address[] memory) {
+        return games[gameNum].players;
+    }
+
+    function getWinner(uint256 gameNum) public view returns(address) {
+        return games[gameNum].winner;
     }
 }
 

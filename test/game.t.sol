@@ -16,7 +16,6 @@ contract CounterTest is Test {
     address addr4;
     address addr5;
 
-    event Log(uint256 iter);
 
     function setUp() public {
         coin = new Coins();
@@ -36,11 +35,15 @@ contract CounterTest is Test {
         Coins(coinAddress).mint(1000);
         ERC20(coinAddress).approve(gameAddress,500);
         vm.stopPrank();
-        vm.prank(addr3);
+        vm.startPrank(addr3);
         Coins(coinAddress).mint(1000);
         ERC20(coinAddress).approve(gameAddress,500);
         vm.stopPrank();
-        vm.prank(addr4);
+        vm.startPrank(addr4);
+        Coins(coinAddress).mint(1000);
+        ERC20(coinAddress).approve(gameAddress,500);
+        vm.stopPrank();
+        vm.startPrank(addr5);
         Coins(coinAddress).mint(1000);
         ERC20(coinAddress).approve(gameAddress,500);
         vm.stopPrank();
@@ -110,14 +113,12 @@ contract CounterTest is Test {
         Game(gameAddress).joinGame(gameInd);
         vm.prank(addr2);
         Game(gameAddress).joinGame(gameInd);
-        bool flag = true;
-        uint256 i=1;
-        while(flag){
+        address winner = address(0);
+        while(winner == address(0)){
             vm.prank(addr1);
-            flag = !(Game(gameAddress).play(gameInd));
+            winner = (Game(gameAddress).play(gameInd));
             vm.prank(addr2);
-            flag = !(Game(gameAddress).play(gameInd));
-            emit Log(i++);
+            winner = (Game(gameAddress).play(gameInd));
         }
         uint256 bal1=ERC20(coinAddress).balanceOf(addr1);
         uint256 bal2=ERC20(coinAddress).balanceOf(addr2);
@@ -127,11 +128,11 @@ contract CounterTest is Test {
     
     function test_updateEntryFees(uint256 fee) public {
         vm.assume(fee>0 && fee<512);
-        //vm.startPrank(addr1);
+        vm.startPrank(addr1);
         Game currGame = new Game(coinAddress);
         address currGameAddress = address(currGame);
         Game(currGameAddress).updateEntryFees(fee);
-        //vm.stopPrank();
+        vm.stopPrank();
         assertEq(fee,currGame.getEntryFees());
     }
 
@@ -187,6 +188,42 @@ contract CounterTest is Test {
         vm.expectRevert(Game.NotAdmin.selector);
         vm.prank(addr2);
         Game(currGameAddress).updateStartDuration(duration);(duration);
+    }
+
+    function test_getPlayers() public {
+        vm.prank(addr5);
+        uint256 gameInd = Game(gameAddress).startNewGame();
+        vm.prank(addr1);
+        Game(gameAddress).joinGame(gameInd);
+        vm.prank(addr2);
+        Game(gameAddress).joinGame(gameInd);
+        vm.prank(addr3);
+        Game(gameAddress).joinGame(gameInd);
+        vm.prank(addr4);
+        Game(gameAddress).joinGame(gameInd);
+        address[] memory addrs = Game(gameAddress).getPlayers(gameInd);
+        address[4] memory myAddrs = [addr1,addr2,addr3,addr4];
+        for(uint8 i=0;i<4;i++){
+            assertEq(addrs[i], myAddrs[i]);
+        }
+    }
+
+    function test_getWinner() public {
+        vm.prank(addr4);
+        uint256 gameInd = Game(gameAddress).startNewGame();
+        vm.prank(addr1);
+        Game(gameAddress).joinGame(gameInd);
+        vm.prank(addr2);
+        Game(gameAddress).joinGame(gameInd);
+        address winner = address(0);
+        for(uint256 i=0;i<10;i++){
+            vm.prank(addr1);
+            winner = (Game(gameAddress).play(gameInd));
+            vm.prank(addr2);
+            winner = (Game(gameAddress).play(gameInd));
+        }
+        assertEq(winner, Game(gameAddress).getWinner(gameInd));
+        
     }
 
 }
