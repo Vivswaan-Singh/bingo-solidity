@@ -2,9 +2,10 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract Game{
-
+contract Game is ReentrancyGuard{
+    
     struct player{
         uint256[5][5] box;
         bool[5][5] check;
@@ -15,11 +16,11 @@ contract Game{
         address[] players;
         mapping(address => player) playerInfo;
         address[] winners;
-        bool status;
+        uint256 status;
     }
     
     address admin;
-    uint256 public entryFees = 10;
+    uint256 entryFees = 10;
     uint256 turnDuration=10;
     uint256 startDuration=10000000000000000000;
     uint256 gameNo;
@@ -29,11 +30,14 @@ contract Game{
     error NotAdmin();
     error EntryFeeNotPaid();
     error JoiningTimeOver();
-    error GameNoLongerActive();
+    error GameNoLongerActive(uint256 gameNum);
+    error GameDoesNotExist(uint256 gameNum);
+    error GameAlreadyBeingPlayed(uint256 gameNum);
+
 
     event newGame(uint256 gameNo); 
     event newPlayer(uint256[5][5] arr);
-    event newPlay(uint256 col,uint256 val,bool win,uint256 inLoop);
+    event newPlay(uint256 col,uint256 val,bool win);
     event checker(bool[5][5] flag);
     event madeTrue(); 
     event eqCheck(uint256 val, uint256 arrVal);
@@ -48,13 +52,14 @@ contract Game{
     function startNewGame() public returns (uint256) {
         gameNo++;
         games[gameNo].startTime=block.timestamp;
-        games[gameNo].status=true;
+        games[gameNo].status=1;
         emit newGame(gameNo);
         return gameNo;
     }
 
-    function joinGame(uint256 gameNum) public returns(uint256[5][5] memory){
-        require(games[gameNum].status,GameNoLongerActive());
+    function joinGame(uint256 gameNum) public nonReentrant returns(uint256[5][5] memory){
+        require(games[gameNum].status!=0,GameDoesNotExist(gameNum));
+        require(games[gameNum].status!=2,GameAlreadyBeingPlayed(gameNum));
         require(block.timestamp<=games[gameNum].startTime+startDuration, JoiningTimeOver());
         bool received = ERC20(coins).transferFrom(msg.sender,address(this),entryFees);
         require(received, EntryFeeNotPaid());
@@ -69,20 +74,20 @@ contract Game{
         
 
         emit newPlayer(games[gameNum].playerInfo[msg.sender].box);
+        games[gameNum].status=1;
         return games[gameNum].playerInfo[msg.sender].box;
 
     }
 
-    function play(uint256 gameNum) public {
-        require(games[gameNum].status,GameNoLongerActive());
+    function play(uint256 gameNum) public nonReentrant returns(bool) {
+        require(games[gameNum].status!=0,GameNoLongerActive(gameNum));
+        games[gameNum].status=2;
         address[] memory players = games[gameNum].players;
         uint256 col = generateCol(gameNum);
         uint256 val = generateVal(gameNum, col);
         for(uint256 k=0;k<players.length;k++){
             for(uint256 i=0;i<5;i++){
-                emit eqCheck(val, games[gameNum].playerInfo[players[k]].box[i][col]); 
                 if(games[gameNum].playerInfo[players[k]].box[i][col]==val){
-                    emit madeTrue();
                     games[gameNum].playerInfo[players[k]].check[i][col]=true;
                 }
             }
@@ -90,12 +95,13 @@ contract Game{
             if(flag){
                 ERC20(coins).transfer(players[k],entryFees*players.length);
                 k=players.length+1;
-                emit newPlay(col, val, flag, players.length);
+                emit newPlay(col, val, flag);
                 k=players.length+1;
-                return ;
+                return flag;
             }
         }
-        emit newPlay(col, val, false, players.length);
+        emit newPlay(col, val, false);
+        return false;
     }
 
     function updateEntryFees(uint256 fees) public {
@@ -103,12 +109,12 @@ contract Game{
         entryFees = fees;
     }
 
-    function updateturnDuration(uint256 duration) public {
+    function updateTurnDuration(uint256 duration) public {
         require(msg.sender == admin, NotAdmin());
         turnDuration = duration;
     }
 
-    function updatestartDuration(uint256 duration) public {
+    function updateStartDuration(uint256 duration) public {
         require(msg.sender == admin, NotAdmin());
         startDuration = duration;
     }
@@ -136,13 +142,12 @@ contract Game{
         return (uint256(keccak256(abi.encodePacked(seed,gameNum,col,msg.sender,block.timestamp))))%256;
     }
 
-    function checkBox(uint256 gameNum, address currPlayer) public returns(bool){
+    function checkBox(uint256 gameNum, address currPlayer) public view returns(bool){
         bool[5][5] memory flag = games[gameNum].playerInfo[currPlayer].check;
 
         for(uint i=0;i<5;i++){
             bool flagRow= flag[i][0] && flag[i][1] && flag[i][2] && flag[i][3] && flag[i][4];
             if(flagRow){
-                emit checker(flag);
                 return true;
             }
         }
@@ -150,12 +155,31 @@ contract Game{
         for(uint i=0;i<5;i++){
             bool flagRow= flag[0][i] && flag[1][i] && flag[2][i] && flag[3][i] && flag[4][i];
             if(flagRow){
-                emit checker(flag);
                 return true;
             }
         }
-        emit checker(flag);
+
+        if(flag[0][0] && flag[1][1] && flag[3][3] && flag[4][4]){
+            return true;
+        }
+
+        if(flag[0][4] && flag[1][3] && flag[3][1] && flag[4][0]){
+            return true;
+        }
+
         return false;
+    }
+
+    function getEntryFees() external view returns(uint256){
+        return entryFees;
+    }
+
+    function getStartDuration() external view returns(uint256){
+        return startDuration;
+    }
+
+    function getTurnDuration() external view returns(uint256){
+        return turnDuration;
     }
 }
 
