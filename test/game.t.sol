@@ -148,7 +148,7 @@ contract CounterTest is Test {
         address currGameAddress = address(currGame);
         Game(currGameAddress).updateTurnDuration(duration);
         vm.stopPrank();
-        assertEq(duration,currGame.getTurnDuration());
+        assertEq(duration, currGame.getTurnDuration());
     }
 
     function test_updateStartDuration(uint256 duration) public {
@@ -156,7 +156,7 @@ contract CounterTest is Test {
         vm.startPrank(addr1);
         Game currGame = new Game(coinAddress);
         address currGameAddress = address(currGame);
-        Game(currGameAddress).updateStartDuration(duration);(duration);
+        Game(currGameAddress).updateStartDuration(duration);
         vm.stopPrank();
         assertEq(duration,currGame.getStartDuration());
     }

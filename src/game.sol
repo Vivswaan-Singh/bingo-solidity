@@ -50,6 +50,7 @@ contract Game is ReentrancyGuard{
     error NotYourTurn(address sender, address turn);
     error TurnDurationOver();
     error RewardNotPaid(address winner);
+    error AlreadyJoined();
 
 
     event newGame(uint256 gameNo); 
@@ -76,11 +77,12 @@ contract Game is ReentrancyGuard{
     }
 
     function joinGame(uint256 gameNum) public nonReentrant returns(uint256[5][5] memory){
-        require(msg.sender != address(0),InvalidAddress());
-        require(games[gameNum].status != GameStatus.DoesNotExist,GameDoesNotExist(gameNum));
+        require(msg.sender != address(0), InvalidAddress());
+        require((gameNo == 0 || gameNum == 0 || gameNum > gameNo || games[gameNum].status != GameStatus.DoesNotExist),GameDoesNotExist(gameNum));
         require(games[gameNum].status != GameStatus.BeingPlayed,GameAlreadyBeingPlayed(gameNum));
         require(games[gameNum].status != GameStatus.GameOver,GameOverAlready(gameNum));
         require(block.timestamp <= games[gameNum].startTime+startDuration, JoiningTimeOver());
+        require(!existsInGame(gameNum, msg.sender),AlreadyJoined());
         
         bool received = ERC20(coins).transferFrom(msg.sender,address(this),entryFees);
         require(received, EntryFeeNotPaid());
@@ -149,7 +151,7 @@ contract Game is ReentrancyGuard{
         startDuration = duration;
     }
 
-    function generateBox(address playerAddress, uint256 gameNum) public {
+    function generateBox(address playerAddress, uint256 gameNum) internal {
         uint256 seed = uint256(blockhash(block.number-1));
         uint256[5][5] memory arr;
         for(uint8 i = 0; i<5 ; i++){
@@ -224,6 +226,16 @@ contract Game is ReentrancyGuard{
 
     function getWinner(uint256 gameNum) public view returns(address) {
         return games[gameNum].winner;
+    }
+
+    function existsInGame(uint256 gameNum, address playerAddr) internal view returns (bool) {
+        address[] memory players = getPlayers(gameNum);
+        for(uint256 i = 0; i < players.length; i++){
+            if(players[i] == playerAddr){
+                return true;
+            }
+        }
+        return false;
     }
 }
 
