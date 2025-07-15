@@ -16,7 +16,6 @@ contract CounterTest is Test {
     address addr4;
     address addr5;
 
-
     function setUp() public {
         coin = new Coins();
         coinAddress = address(coin);
@@ -91,11 +90,17 @@ contract CounterTest is Test {
         Game(gameAddress).joinGame(gameInd);
         vm.prank(addr2);
         Game(gameAddress).joinGame(gameInd);
+        address winner = address(0);
         for(uint256 i=0;i<25;i++){
             vm.prank(addr1);
-            Game(gameAddress).play(gameInd);
-            vm.prank(addr2);
-            Game(gameAddress).play(gameInd);
+            winner = Game(gameAddress).play(gameInd); 
+            if(winner == address(0)){
+                vm.prank(addr2);
+                Game(gameAddress).play(gameInd);
+            }
+            else{
+                break;
+            }
         }
         uint256 bal1=ERC20(coinAddress).balanceOf(addr1);
         uint256 bal2=ERC20(coinAddress).balanceOf(addr2);
@@ -216,11 +221,16 @@ contract CounterTest is Test {
         vm.prank(addr2);
         Game(gameAddress).joinGame(gameInd);
         address winner = address(0);
-        for(uint256 i=0;i<10;i++){
+        for(uint256 i=0;i<10000;i++){
             vm.prank(addr1);
             winner = (Game(gameAddress).play(gameInd));
-            vm.prank(addr2);
-            winner = (Game(gameAddress).play(gameInd));
+            if(winner == address(0)){
+                vm.prank(addr2);
+                winner = (Game(gameAddress).play(gameInd));
+            }
+            else{
+                break;
+            }
         }
         assertEq(winner, Game(gameAddress).getWinner(gameInd));
         

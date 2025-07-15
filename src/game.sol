@@ -46,12 +46,12 @@ contract Game is ReentrancyGuard{
     error GameAlreadyBeingPlayed(uint256 gameNum);
     error GameNotStarted(uint256 gameNum);
     error GameOverAlready(uint256 gameNum);
-    error NotYourTurn();
+    error NotYourTurn(address sender, address turn);
 
 
     event newGame(uint256 gameNo); 
     event newPlayer(uint256[5][5] arr);
-    event newPlay(uint256 col,uint256 val,bool win);
+    event newPlay(uint256 col,uint256 val,address winner);
     
 
 
@@ -92,7 +92,7 @@ contract Game is ReentrancyGuard{
     function play(uint256 gameNum) public nonReentrant returns(address) {
         require(games[gameNum].status!=GameStatus.DoesNotExist,GameDoesNotExist(gameNum));
         require(games[gameNum].status!=GameStatus.GameOver,GameOverAlready(gameNum));
-        require(msg.sender==games[gameNum].players[games[gameNum].currPlayerInd], NotYourTurn());
+        require(msg.sender==games[gameNum].players[games[gameNum].currPlayerInd], NotYourTurn(msg.sender, games[gameNum].players[games[gameNum].currPlayerInd]));
         games[gameNum].status=GameStatus.BeingPlayed;
         address[] memory players = games[gameNum].players;
         uint256 col = generateCol(gameNum);
@@ -106,18 +106,17 @@ contract Game is ReentrancyGuard{
             }
             bool flag=checkBox(gameNum,players[k]);
             if(flag){
-                games[gameNum].winner=players[k];
                 games[gameNum].status=GameStatus.GameOver;
                 ERC20(coins).transfer(players[k],entryFees*noOfPlayers);
-                k=players.length+1;
-                emit newPlay(col, val, flag);
-                return players[k];
+                games[gameNum].winner=players[k];
+                emit newPlay(col, val, players[k]); 
+                return players[k]; 
             }
         }
         games[gameNum].numOfRounds+=1;
         games[gameNum].currPlayerInd+=1;
         games[gameNum].currPlayerInd%=noOfPlayers;
-        emit newPlay(col, val, false);
+        emit newPlay(col, val, address(0));
         return address(0);
     }
 
@@ -163,25 +162,30 @@ contract Game is ReentrancyGuard{
         uint256 mask = games[gameNum].playerInfo[currPlayer].bitCheck;
 
         for(uint256 i=0;i<21;i+=5){
-            uint256 flagRow= (mask & (1 << i) & (1 << (i+1)) & (1 << (i+2)) & (1 << (i+3)) & (1 << (i+4))); 
-            if(flagRow>0){
+            uint256 rowMask = ((1 << i) | (1 << (i+1)) | (1 << (i+2)) | (1 << (i+3)) | (1 << (i+4)));
+            uint256 flagRow= (mask & rowMask); 
+            if(flagRow == rowMask){
                 return true;
             }
-        }
-
-
+        } 
+        
         for(uint256 i=0;i<5;i++){
-            uint256 flagCol = (mask & (1 << i) & (1 << (i+5)) & (1 << (i+10)) & (1 << (i+15)) & (1 << (i+20))); 
-            if(flagCol > 0){
+            uint256 colMask = ((1 << i) | (1 << (i+5)) | (1 << (i+10)) | (1 << (i+15)) | (1 << (i+20)));
+            uint256 flagCol = (mask & colMask); 
+            if(flagCol == colMask){
                 return true;
             }
         }
 
-        if((mask & (1) & (1 << 6) & (1 << 12) & (1 << 18) & (1 << 24)) > 0){
+        uint256 diag = ((1) | (1 << 6) | (1 << 12) | (1 << 18) | (1 << 24));
+
+        if((mask & diag) == diag){
             return true;
         }
 
-        if((mask & (1 << 4) & (1 << 8) & (1 << 12) & (1 << 16) & (1 << 20)) > 0){
+        uint256 revDiag = ((1 << 4) | (1 << 8) | (1 << 12) | (1 << 16) | (1 << 20));
+
+        if((mask & revDiag) == revDiag){
             return true;
         }
 
