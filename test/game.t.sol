@@ -70,7 +70,7 @@ contract CounterTest is Test {
         Game(gameAddress).joinGame(gameInd);
         vm.prank(addr2);
         Game(gameAddress).joinGame(gameInd);
-        vm.prank(addr3);
+        vm.prank(addr1);
         Game(gameAddress).play(gameInd);
         vm.expectRevert(abi.encodeWithSelector(Game.GameAlreadyBeingPlayed.selector, gameInd));
         vm.prank(addr5);
@@ -89,7 +89,9 @@ contract CounterTest is Test {
         vm.prank(addr2);
         Game(gameAddress).joinGame(gameInd);
         for(uint256 i=0;i<25;i++){
-            vm.prank(addr3);
+            vm.prank(addr1);
+            Game(gameAddress).play(gameInd);
+            vm.prank(addr2);
             Game(gameAddress).play(gameInd);
         }
         uint256 bal1=ERC20(coinAddress).balanceOf(addr1);
@@ -111,7 +113,9 @@ contract CounterTest is Test {
         bool flag = true;
         uint256 i=1;
         while(flag){
-            vm.prank(addr3);
+            vm.prank(addr1);
+            flag = !(Game(gameAddress).play(gameInd));
+            vm.prank(addr2);
             flag = !(Game(gameAddress).play(gameInd));
             emit Log(i++);
         }

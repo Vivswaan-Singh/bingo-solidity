@@ -15,6 +15,7 @@ contract Game is ReentrancyGuard{
         uint256 startTime;
         address[] players;
         mapping(address => player) playerInfo;
+        uint256 currPlayerInd;
         address[] winners;
         address winner;
         uint256 status;
@@ -36,6 +37,7 @@ contract Game is ReentrancyGuard{
     error GameAlreadyBeingPlayed(uint256 gameNum);
     error GameNotStarted(uint256 gameNum);
     error GameOverAlready(uint256 gameNum);
+    error NotYourTurn();
 
 
     event newGame(uint256 gameNo); 
@@ -57,6 +59,7 @@ contract Game is ReentrancyGuard{
         gameNo++;
         games[gameNo].startTime=block.timestamp;
         games[gameNo].status=1;
+        games[gameNo].currPlayerInd=0;
         emit newGame(gameNo);
         return gameNo;
     }
@@ -87,11 +90,13 @@ contract Game is ReentrancyGuard{
     function play(uint256 gameNum) public nonReentrant returns(bool) {
         require(games[gameNum].status!=0,GameDoesNotExist(gameNum));
         require(games[gameNum].status!=3,GameOverAlready(gameNum));
+        require(msg.sender==games[gameNum].players[games[gameNum].currPlayerInd], NotYourTurn());
         games[gameNum].status=2;
         address[] memory players = games[gameNum].players;
         uint256 col = generateCol(gameNum);
         uint256 val = generateVal(gameNum, col);
-        for(uint256 k=0;k<players.length;k++){
+        uint256 noOfPlayers = players.length;
+        for(uint256 k=0;k<noOfPlayers;k++){
             for(uint256 i=0;i<5;i++){
                 if(games[gameNum].playerInfo[players[k]].box[i][col]==val){
                     games[gameNum].playerInfo[players[k]].check[i][col]=true;
@@ -101,12 +106,14 @@ contract Game is ReentrancyGuard{
             if(flag){
                 games[gameNum].winner=players[k];
                 games[gameNum].status=3;
-                ERC20(coins).transfer(players[k],entryFees*players.length);
+                ERC20(coins).transfer(players[k],entryFees*noOfPlayers);
                 k=players.length+1;
                 emit newPlay(col, val, flag);
                 return flag;
             }
         }
+        games[gameNo].currPlayerInd+=1;
+        games[gameNo].currPlayerInd%=noOfPlayers;
         emit newPlay(col, val, false);
         return false;
     }
