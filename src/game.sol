@@ -101,7 +101,7 @@ contract Game is ReentrancyGuard{
         require(block.timestamp <= games[gameNum].lastMoveTime + turnDuration, TurnDurationOver());
         require(msg.sender == games[gameNum].players[games[gameNum].currPlayerInd], NotYourTurn(msg.sender, games[gameNum].players[games[gameNum].currPlayerInd]));
 
-        games[gameNum].status=GameStatus.BeingPlayed;
+        games[gameNum].status = GameStatus.BeingPlayed;
         address[] memory players = games[gameNum].players;
         uint256 col = generateCol(gameNum);
         uint256 val = generateVal(gameNum, col);
@@ -117,8 +117,8 @@ contract Game is ReentrancyGuard{
             if(flag){
                 games[gameNum].status = GameStatus.GameOver;
                 games[gameNum].winner = players[k];
-                games[gameNum].lastMoveTime=block.timestamp;
-                bool sent = ERC20(coins).transfer(players[k],entryFees*noOfPlayers);
+                games[gameNum].lastMoveTime = block.timestamp;
+                bool sent = ERC20(coins).transfer(players[k], entryFees*noOfPlayers);
                 require(sent, RewardNotPaid(players[k]));
                 emit newPlay(col, val, players[k]); 
                 return players[k]; 
