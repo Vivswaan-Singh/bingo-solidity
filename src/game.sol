@@ -80,15 +80,15 @@ contract Game is ReentrancyGuard{
         require(games[gameNum].status != GameStatus.DoesNotExist,GameDoesNotExist(gameNum));
         require(games[gameNum].status != GameStatus.BeingPlayed,GameAlreadyBeingPlayed(gameNum));
         require(games[gameNum].status != GameStatus.GameOver,GameOverAlready(gameNum));
-        require(block.timestamp<=games[gameNum].startTime+startDuration, JoiningTimeOver());
+        require(block.timestamp <= games[gameNum].startTime+startDuration, JoiningTimeOver());
         
         bool received = ERC20(coins).transferFrom(msg.sender,address(this),entryFees);
         require(received, EntryFeeNotPaid());
         generateBox(msg.sender,gameNum);
         games[gameNum].players.push(msg.sender);
         games[gameNum].playerInfo[msg.sender].bitCheck = (1 << 12);
-        games[gameNum].lastMoveTime=block.timestamp;
-        games[gameNum].status=GameStatus.NotBeingPlayedYet;
+        games[gameNum].lastMoveTime = block.timestamp;
+        games[gameNum].status = GameStatus.NotBeingPlayedYet;
 
         emit newPlayer(games[gameNum].playerInfo[msg.sender].box);
         return games[gameNum].playerInfo[msg.sender].box;
@@ -96,10 +96,10 @@ contract Game is ReentrancyGuard{
     }
 
     function play(uint256 gameNum) public nonReentrant returns(address) {
-        require(games[gameNum].status!=GameStatus.DoesNotExist,GameDoesNotExist(gameNum));
-        require(games[gameNum].status!=GameStatus.GameOver,GameOverAlready(gameNum));
-        require(block.timestamp<=games[gameNum].lastMoveTime + turnDuration, TurnDurationOver());
-        require(msg.sender==games[gameNum].players[games[gameNum].currPlayerInd], NotYourTurn(msg.sender, games[gameNum].players[games[gameNum].currPlayerInd]));
+        require(games[gameNum].status != GameStatus.DoesNotExist, GameDoesNotExist(gameNum));
+        require(games[gameNum].status != GameStatus.GameOver, GameOverAlready(gameNum));
+        require(block.timestamp <= games[gameNum].lastMoveTime + turnDuration, TurnDurationOver());
+        require(msg.sender == games[gameNum].players[games[gameNum].currPlayerInd], NotYourTurn(msg.sender, games[gameNum].players[games[gameNum].currPlayerInd]));
 
         games[gameNum].status=GameStatus.BeingPlayed;
         address[] memory players = games[gameNum].players;
