@@ -11,6 +11,14 @@ contract Game is ReentrancyGuard{
         bool[5][5] check;
     }
 
+    enum GameStatus{
+        DoesNotExist,
+        NoPlayers,
+        NotBeingPlayedYet,
+        BeingPlayed,
+        GameOver
+    }
+
     struct game{
         uint256 startTime;
         address[] players;
@@ -18,7 +26,7 @@ contract Game is ReentrancyGuard{
         uint256 currPlayerInd;
         address[] winners;
         address winner;
-        uint256 status;
+        GameStatus status;
     }
     
     address admin;
@@ -58,16 +66,16 @@ contract Game is ReentrancyGuard{
     function startNewGame() public returns (uint256) {
         gameNo++;
         games[gameNo].startTime=block.timestamp;
-        games[gameNo].status=1;
+        games[gameNo].status=GameStatus.NoPlayers;
         games[gameNo].currPlayerInd=0;
         emit newGame(gameNo);
         return gameNo;
     }
 
     function joinGame(uint256 gameNum) public nonReentrant returns(uint256[5][5] memory){
-        require(games[gameNum].status!=0,GameDoesNotExist(gameNum));
-        require(games[gameNum].status!=2,GameAlreadyBeingPlayed(gameNum));
-        require(games[gameNum].status!=3,GameOverAlready(gameNum));
+        require(games[gameNum].status!=GameStatus.DoesNotExist,GameDoesNotExist(gameNum));
+        require(games[gameNum].status!=GameStatus.BeingPlayed,GameAlreadyBeingPlayed(gameNum));
+        require(games[gameNum].status!=GameStatus.GameOver,GameOverAlready(gameNum));
         require(block.timestamp<=games[gameNum].startTime+startDuration, JoiningTimeOver());
         bool received = ERC20(coins).transferFrom(msg.sender,address(this),entryFees);
         require(received, EntryFeeNotPaid());
@@ -82,16 +90,16 @@ contract Game is ReentrancyGuard{
         
 
         emit newPlayer(games[gameNum].playerInfo[msg.sender].box);
-        games[gameNum].status=1;
+        games[gameNum].status=GameStatus.NotBeingPlayedYet;
         return games[gameNum].playerInfo[msg.sender].box;
 
     }
 
     function play(uint256 gameNum) public nonReentrant returns(bool) {
-        require(games[gameNum].status!=0,GameDoesNotExist(gameNum));
-        require(games[gameNum].status!=3,GameOverAlready(gameNum));
+        require(games[gameNum].status!=GameStatus.DoesNotExist,GameDoesNotExist(gameNum));
+        require(games[gameNum].status!=GameStatus.GameOver,GameOverAlready(gameNum));
         require(msg.sender==games[gameNum].players[games[gameNum].currPlayerInd], NotYourTurn());
-        games[gameNum].status=2;
+        games[gameNum].status=GameStatus.BeingPlayed;
         address[] memory players = games[gameNum].players;
         uint256 col = generateCol(gameNum);
         uint256 val = generateVal(gameNum, col);
@@ -105,15 +113,15 @@ contract Game is ReentrancyGuard{
             bool flag=checkBox(gameNum,players[k]);
             if(flag){
                 games[gameNum].winner=players[k];
-                games[gameNum].status=3;
+                games[gameNum].status=GameStatus.GameOver;
                 ERC20(coins).transfer(players[k],entryFees*noOfPlayers);
                 k=players.length+1;
                 emit newPlay(col, val, flag);
                 return flag;
             }
         }
-        games[gameNo].currPlayerInd+=1;
-        games[gameNo].currPlayerInd%=noOfPlayers;
+        games[gameNum].currPlayerInd+=1;
+        games[gameNum].currPlayerInd%=noOfPlayers;
         emit newPlay(col, val, false);
         return false;
     }
