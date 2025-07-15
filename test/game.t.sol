@@ -57,7 +57,7 @@ contract CounterTest is Test {
         assertEq(sum,(n*(n+1))/2);
     }
 
-    function test_joinGameNotExisting() public {
+    function test_joinGameNotExisting() private {
         vm.prank(addr4);
         uint256 gameInd = Game(gameAddress).startNewGame();
         vm.expectRevert(abi.encodeWithSelector(Game.GameDoesNotExist.selector, gameInd+1));
