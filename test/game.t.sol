@@ -6,6 +6,7 @@ import {Game, Coins} from "../src/game.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract CounterTest is Test {
+
     Game bingo;
     Coins coin;
     address gameAddress;
@@ -51,7 +52,7 @@ contract CounterTest is Test {
     function test_startNewGame(uint256 n) public {
         vm.assume(n>0 && n<256);
         uint256 sum = 0;
-        for(uint256 i=0;i<n;i++){
+        for(uint256 i = 0; i < n; i++){
             sum += Game(gameAddress).startNewGame();
         }
         assertEq(sum,(n*(n+1))/2);
@@ -77,7 +78,7 @@ contract CounterTest is Test {
     }
 
     function test_play(uint256 iters) public {
-        vm.assume(iters>0 && iters<100);
+        vm.assume(iters>0 && iters<1000);
         vm.prank(addr4);
         uint256 gameInd = Game(gameAddress).startNewGame();
         uint256 init_bal1=ERC20(coinAddress).balanceOf(addr1);
@@ -127,10 +128,12 @@ contract CounterTest is Test {
             vm.warp(currTime);
             vm.prank(addr1);
             winner = (Game(gameAddress).play(gameInd));
+            cnt++;
             if(winner == address(0)){
                 vm.warp(currTime);
                 vm.prank(addr2);
                 winner = (Game(gameAddress).play(gameInd));
+                cnt++;
             }
             else{
                 break;
