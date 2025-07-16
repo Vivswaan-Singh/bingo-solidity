@@ -123,7 +123,7 @@ contract Game is ReentrancyGuard{
 
         currGame.status = GameStatus.BeingPlayed;   // remove keep logic in join instead 
         address[] memory players = currGame.players;
-        uint256 val = generateVal(gameNum);
+        uint256 val = generateVal(gameNum, msg.sender);
         uint256 noOfPlayers = currGame.numOfPlayers;
 
         for(uint256 k=0;k<noOfPlayers;k++){
@@ -193,12 +193,12 @@ contract Game is ReentrancyGuard{
         playerInfo[gameNum][playerAddress].box=arr;
     }
 
-    function generateVal(uint256 gameNum) public view returns(uint256) {
+    function generateVal(uint256 gameNum, address addr) internal view returns(uint256) {
         uint256 seed = uint256(blockhash(block.number-1));
-        return (uint256(keccak256(abi.encodePacked(seed,gameNum,msg.sender,block.timestamp))))%256;
+        return (uint256(keccak256(abi.encodePacked(seed,gameNum,addr,msg.sender,block.timestamp))))%256;
     }
 
-    function checkBox(uint256 gameNum, address playerAddress) public {
+    function checkBox(uint256 gameNum, address playerAddress) internal {
         player memory currPlayer = playerInfo[gameNum][playerAddress];
         uint256 mask = currPlayer.bitCheck;
 
@@ -209,6 +209,7 @@ contract Game is ReentrancyGuard{
             if(flagRow == rowMask){
                 currPlayer.score++;
                 if(currPlayer.score >= 5){
+                    playerInfo[gameNum][playerAddress] = currPlayer;
                     return ;
                 }
             }
@@ -220,6 +221,7 @@ contract Game is ReentrancyGuard{
             if(flagCol == colMask){
                 currPlayer.score++;
                 if(currPlayer.score >= 5){
+                    playerInfo[gameNum][playerAddress] = currPlayer;
                     return ;
                 }
             }
@@ -230,6 +232,7 @@ contract Game is ReentrancyGuard{
         if((mask & diag) == diag){
             currPlayer.score++;
             if(currPlayer.score >= 5){
+                playerInfo[gameNum][playerAddress] = currPlayer;
                 return ;
             }
         }
@@ -239,10 +242,10 @@ contract Game is ReentrancyGuard{
         if((mask & revDiag) == revDiag){
             currPlayer.score++;
             if(currPlayer.score >= 5){
+                playerInfo[gameNum][playerAddress] = currPlayer;
                 return ;
             }
         }
-
         playerInfo[gameNum][playerAddress] = currPlayer;
     }
 
