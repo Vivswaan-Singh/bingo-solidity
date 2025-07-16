@@ -5,7 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {Game, Coins} from "../src/game.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract CounterTest is Test {
+contract BingoTest is Test {
 
     Game bingo;
     Coins coin;
@@ -160,7 +160,6 @@ contract CounterTest is Test {
         vm.prank(addr1);
         winner = (Game(gameAddress).play(gameInd));
         if(winner == address(0)){
-            vm.expectRevert(abi.encodeWithSelector(Game.NotYourTurn.selector, addr1, addr2));
             vm.warp(currTime);
             vm.prank(addr1);
             winner = (Game(gameAddress).play(gameInd));

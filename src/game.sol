@@ -89,7 +89,7 @@ contract Game is ReentrancyGuard{
     function joinGame(uint256 gameNum) public nonReentrant returns(uint256){
         game memory currGame = games[gameNum];
         require(msg.sender != address(0), InvalidAddress());
-        require((gameNo != 0 || gameNum != 0 || currGame.status == GameStatus.DoesNotExist),GameDoesNotExist(gameNum));
+        require((gameNo != 0 && gameNum != 0 && gameNum<=gameNo && currGame.status != GameStatus.DoesNotExist),GameDoesNotExist(gameNum));
         require(block.timestamp <= currGame.startDuration + currGame.startTime, JoinTimeOver());  
         require(currGame.status != GameStatus.GameOver,GameOverAlready(gameNum));
         require(!existsInGame(gameNum, msg.sender), AlreadyJoined());
@@ -116,7 +116,18 @@ contract Game is ReentrancyGuard{
         require(currGame.status != GameStatus.GameOver, GameOverAlready(gameNum));
         require(block.timestamp > currGame.startTime + currGame.startDuration, WaitingForMorePlayers(block.timestamp, currGame.startTime + currGame.startDuration));
         require((currGame.status == GameStatus.NotBeingPlayedYet || block.timestamp <= currGame.lastMoveTime + currGame.turnDuration), TurnDurationOver());
-        require(msg.sender == currGame.players[currGame.currPlayerInd], NotYourTurn(msg.sender, currGame.players[currGame.currPlayerInd]));
+        if(block.timestamp > currGame.lastMoveTime + currGame.turnDuration){
+            currGame.currPlayerInd+=1;
+            currGame.currPlayerInd %= currGame.numOfPlayers;
+
+            if(msg.sender != currGame.players[currGame.currPlayerInd]){
+                currGame.lastMoveTime = block.timestamp;
+                return address(0);
+            }
+            
+        }
+
+        //require(msg.sender == currGame.players[currGame.currPlayerInd], NotYourTurn(msg.sender, currGame.players[currGame.currPlayerInd]));
 
         currGame.status = GameStatus.BeingPlayed;   // remove keep logic in join instead 
         address[] memory players = currGame.players;
