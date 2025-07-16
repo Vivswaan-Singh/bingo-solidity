@@ -9,6 +9,7 @@ contract Game is ReentrancyGuard{
     struct player{
         uint256[5][5] box; // use bit manipulation instead
         uint256 bitCheck;
+        uint256 score;
     }
 
     enum GameStatus{
@@ -22,28 +23,28 @@ contract Game is ReentrancyGuard{
     struct game{
         uint256 startTime;
         address[] players;
-        mapping(address => player) playerInfo;
         uint256 currPlayerInd;
-        uint256 numOfRounds; //remove this 
         uint256 fees; 
         uint256 startDuration;
         uint256 turnDuration;  
         address winner;
         uint256 lastMoveTime;
         GameStatus status;
+        uint256 numOfPlayers; 
     }
+
+    mapping(uint256=>mapping(address => player)) playerInfo;
     
     address admin;
-    uint256 entryFees = 10;
-    uint256 turnDuration=10000;
-    uint256 startDuration=10000;
+    uint256 entryFees = 0;
+    uint256 turnDuration=0;
+    uint256 startDuration=10;
     uint256 gameNo;
     address coins;
     mapping(uint256 => game) games;
 
     error NotAdmin();
     error EntryFeeNotPaid();
-    error JoiningTimeOver();
     error InvalidAddress();
     error GameNotActive(uint256 gameNum);
     error GameDoesNotExist(uint256 gameNum);
@@ -54,11 +55,16 @@ contract Game is ReentrancyGuard{
     error TurnDurationOver();
     error RewardNotPaid(address winner);
     error AlreadyJoined();
+    error WaitingForMorePlayers(uint256 time,uint256 neededTime);
+    error JoinTimeOver();
 
 
     event newGame(uint256 gameNo); 
     event newPlayer(uint256[5][5] arr);
-    event newPlay(uint256 col,uint256 val,address winner);
+    event newPlay(uint256 val,address winner);
+    event updatedFees(uint256 fees);
+    event updatedStartDuration(uint256 startDuration);
+    event updatedTurnDuration(uint256 turnDuration);
     
 
 
@@ -70,153 +76,174 @@ contract Game is ReentrancyGuard{
 
     function startNewGame() public returns (uint256) {
         gameNo++;
-        games[gameNo].startTime=block.timestamp;
-        games[gameNo].lastMoveTime=block.timestamp;
-        games[gameNo].status=GameStatus.NoPlayers;
-        games[gameNo].startduration = startDuration;
-        games[gameNo].turnduration = turnDuration;
-        games[gameNo].fees = entryFees;
+        game memory currGame = games[gameNo];
+        currGame.startTime=block.timestamp;
+        currGame.lastMoveTime=block.timestamp;
+        currGame.status=GameStatus.NoPlayers;
+        currGame.startDuration = startDuration;
+        currGame.turnDuration = turnDuration;
+        currGame.fees = entryFees;
+        currGame.winner = address(0);
+        games[gameNo] = currGame;
         emit newGame(gameNo);
         return gameNo;
     }
 
     function joinGame(uint256 gameNum) public nonReentrant returns(uint256[5][5] memory){
+        game memory currGame = games[gameNum];
         require(msg.sender != address(0), InvalidAddress());
-        require((gameNo != 0 || gameNum != 0 || games[gameNum].status == GameStatus.DoesNotExist),GameDoesNotExist(gameNum));
-        require(games[gameNum].status != GameStatus.BeingPlayed,GameAlreadyBeingPlayed(gameNum));  // use join duration instead
-        require(games[gameNum].status != GameStatus.GameOver,GameOverAlready(gameNum));
-        require(block.timestamp <= games[gameNum].startTime+games[gameNum].startDuration, JoiningTimeOver());
+        require((gameNo != 0 || gameNum != 0 || currGame.status == GameStatus.DoesNotExist),GameDoesNotExist(gameNum));
+        require(block.timestamp <= currGame.startDuration + currGame.startTime, JoinTimeOver());  
+        require(currGame.status != GameStatus.GameOver,GameOverAlready(gameNum));
         require(!existsInGame(gameNum, msg.sender), AlreadyJoined());
         
-        bool received = ERC20(coins).transferFrom(msg.sender,address(this),games[gameNum].fees);
+        bool received = ERC20(coins).transferFrom(msg.sender,address(this),currGame.fees);
         require(received, EntryFeeNotPaid());
         generateBox(msg.sender,gameNum);
-        games[gameNum].players.push(msg.sender);
-        games[gameNum].playerInfo[msg.sender].bitCheck = 0; // todo remove (1 << 12);
-        games[gameNum].lastMoveTime = block.timestamp;
-        games[gameNum].status = GameStatus.NotBeingPlayedYet;
+        playerInfo[gameNum][msg.sender].bitCheck = 0; 
+        currGame.lastMoveTime = block.timestamp;
+        currGame.status = GameStatus.NotBeingPlayedYet;
+        currGame.numOfPlayers++;
 
-        emit newPlayer(games[gameNum].playerInfo[msg.sender].box);
-        return games[gameNum].playerInfo[msg.sender].box;
+        games[gameNum] = currGame;
+        games[gameNum].players.push(msg.sender);
+
+        emit newPlayer(playerInfo[gameNum][msg.sender].box);
+        return playerInfo[gameNum][msg.sender].box;
 
     }
 
     function play(uint256 gameNum) public nonReentrant returns(address) {
-        Game memory currGame = game[gameNum];
+        game memory currGame = games[gameNum];
         require(currGame.status != GameStatus.DoesNotExist, GameDoesNotExist(gameNum));
         require(currGame.status != GameStatus.GameOver, GameOverAlready(gameNum));
-        require(block.timestamp <= currGame.lastMoveTime + currGame.turnDuration, TurnDurationOver());
-        // todo add join duraction check to prevent palaying so that all players can join
+        require(block.timestamp > currGame.startTime + currGame.startDuration, WaitingForMorePlayers(block.timestamp, currGame.startTime + currGame.startDuration));
+        require((currGame.status == GameStatus.NotBeingPlayedYet || block.timestamp <= currGame.lastMoveTime + currGame.turnDuration), TurnDurationOver());
         require(msg.sender == currGame.players[currGame.currPlayerInd], NotYourTurn(msg.sender, currGame.players[currGame.currPlayerInd]));
 
-        games[gameNum].status = GameStatus.BeingPlayed;   // remove keep logic in join instead 
+        currGame.status = GameStatus.BeingPlayed;   // remove keep logic in join instead 
         address[] memory players = currGame.players;
-        uint256 col = generateCol(gameNum);
-        uint256 val = generateVal(gameNum, col);
-        uint256 noOfPlayers = players.length;
+        uint256 val = generateVal(gameNum);
+        uint256 noOfPlayers = currGame.numOfPlayers;
 
         for(uint256 k=0;k<noOfPlayers;k++){
+            player memory temp = playerInfo[gameNum][players[k]];
+
             for(uint256 i=0;i<5;i++){
-                if(currGame.playerInfo[players[k]].box[i][col] == val){
-                    games[gameNum].playerInfo[players[k]].bitCheck |= (1 << ((i*5)+col));
-                }
+                for(uint256 j=0;j<5;j++){
+                    if(temp.box[i][j] == val){
+                        temp.bitCheck |= (1 << ((i*5)+j));
+                    }
+                } 
             }
-            bool flag = checkBox(gameNum,players[k]);
-            if(flag){
+
+            playerInfo[gameNum][players[k]] = temp;
+            checkBox(gameNum,players[k]);
+
+            if(temp.score >= 5){
                 currGame.status = GameStatus.GameOver;
                 currGame.winner = players[k];
                 games[gameNum] = currGame;
                 bool sent = ERC20(coins).transfer(players[k], entryFees*noOfPlayers);
                 require(sent, RewardNotPaid(players[k]));
-                emit newPlay(col, val, players[k]); // diff event
+                emit newPlay(val, players[k]); // diff event
                 return players[k]; 
             }
+
         }
 
-        currGame.numOfRounds += 1;
         currGame.currPlayerInd += 1;
         currGame.currPlayerInd %= noOfPlayers;
         currGame.lastMoveTime = block.timestamp;
 
         games[gameNum] = currGame;
 
-        emit newPlay(col, val, address(0));
+        emit newPlay(val, address(0));
         return address(0);
     }
-
-//add events in updates
 
     function updateEntryFees(uint256 fees) public {
         require(msg.sender == admin, NotAdmin());
         entryFees = fees;
+        emit updatedFees(entryFees);
     }
 
     function updateTurnDuration(uint256 duration) public {
         require(msg.sender == admin, NotAdmin());
         turnDuration = duration;
+        emit updatedTurnDuration(turnDuration);
     }
 
     function updateStartDuration(uint256 duration) public {
         require(msg.sender == admin, NotAdmin());
         startDuration = duration;
+        emit updatedStartDuration(startDuration);
     }
 
     function generateBox(address playerAddress, uint256 gameNum) internal {
         uint256 seed = uint256(blockhash(block.number-1));
         uint256[5][5] memory arr;
+
         for(uint8 i = 0; i<5 ; i++){
             for(uint8 j=0; j < 5; j++){
-                if(!(i == 2 && j == 2)){
-                    arr[i][j] = (uint256(keccak256((abi.encodePacked(seed,i,j,playerAddress,block.timestamp)))))%256;
-                }
+                arr[i][j] = (uint256(keccak256((abi.encodePacked(seed,i,j,playerAddress,block.timestamp)))))%256;
             }
         }
-        games[gameNum].playerInfo[playerAddress].box=arr;
+
+        playerInfo[gameNum][playerAddress].box=arr;
     }
 
-    function generateCol(uint256 gameNum) public view returns(uint256) {
+    function generateVal(uint256 gameNum) public view returns(uint256) {
         uint256 seed = uint256(blockhash(block.number-1));
-        return (uint256(keccak256(abi.encodePacked(seed,gameNum,msg.sender,block.timestamp))))%5;
+        return (uint256(keccak256(abi.encodePacked(seed,gameNum,msg.sender,block.timestamp))))%256;
     }
 
-    function generateVal(uint256 gameNum, uint256 col) public view returns(uint256) {
-        uint256 seed = uint256(blockhash(block.number-1));
-        return (uint256(keccak256(abi.encodePacked(seed,gameNum,col,msg.sender,block.timestamp))))%256;
-    }
-
-    function checkBox(uint256 gameNum, address currPlayer) public view returns(bool){
-        uint256 mask = games[gameNum].playerInfo[currPlayer].bitCheck;
+    function checkBox(uint256 gameNum, address playerAddress) public {
+        player memory currPlayer = playerInfo[gameNum][playerAddress];
+        uint256 mask = currPlayer.bitCheck;
 
         for(uint256 i = 0; i < 21; i += 5){
 
             uint256 rowMask = ((1 << i) | (1 << (i+1)) | (1 << (i+2)) | (1 << (i+3)) | (1 << (i+4)));
             uint256 flagRow = (mask & rowMask); 
             if(flagRow == rowMask){
-                return true;
+                currPlayer.score++;
+                if(currPlayer.score >= 5){
+                    return ;
+                }
             }
         } 
-        // return true on 5 
+
         for(uint256 i = 0; i < 5; i++){
             uint256 colMask = ((1 << i) | (1 << (i+5)) | (1 << (i+10)) | (1 << (i+15)) | (1 << (i+20)));
             uint256 flagCol = (mask & colMask); 
             if(flagCol == colMask){
-                return true;
+                currPlayer.score++;
+                if(currPlayer.score >= 5){
+                    return ;
+                }
             }
         }
 
         uint256 diag = ((1) | (1 << 6) | (1 << 12) | (1 << 18) | (1 << 24));
 
         if((mask & diag) == diag){
-            return true;
+            currPlayer.score++;
+            if(currPlayer.score >= 5){
+                return ;
+            }
         }
 
         uint256 revDiag = ((1 << 4) | (1 << 8) | (1 << 12) | (1 << 16) | (1 << 20));
 
         if((mask & revDiag) == revDiag){
-            return true;
+            currPlayer.score++;
+            if(currPlayer.score >= 5){
+                return ;
+            }
         }
 
-        return false;
+        playerInfo[gameNum][playerAddress] = currPlayer;
     }
 
     function getEntryFees() external view returns(uint256){

@@ -57,13 +57,6 @@ contract CounterTest is Test {
         assertEq(sum,(n*(n+1))/2);
     }
 
-    function test_joinGameNotExisting() private {
-        vm.prank(addr4);
-        uint256 gameInd = Game(gameAddress).startNewGame();
-        vm.expectRevert(abi.encodeWithSelector(Game.GameDoesNotExist.selector, gameInd+1));
-        vm.prank(addr4);
-        Game(gameAddress).joinGame(gameInd+1);
-    }
 
     function test_joinGameBeingPlayed() public {
         vm.prank(addr4);
@@ -72,9 +65,12 @@ contract CounterTest is Test {
         Game(gameAddress).joinGame(gameInd);
         vm.prank(addr2);
         Game(gameAddress).joinGame(gameInd);
+        uint256 startDuration = Game(gameAddress).getStartDuration();
+        uint256 currTime = block.timestamp + startDuration + 1;
+        vm.warp(currTime);
         vm.prank(addr1);
         Game(gameAddress).play(gameInd);
-        vm.expectRevert(abi.encodeWithSelector(Game.GameAlreadyBeingPlayed.selector, gameInd));
+        vm.expectRevert(Game.JoinTimeOver.selector);
         vm.prank(addr5);
         Game(gameAddress).joinGame(gameInd);
 
@@ -91,11 +87,15 @@ contract CounterTest is Test {
         Game(gameAddress).joinGame(gameInd);
         vm.prank(addr2);
         Game(gameAddress).joinGame(gameInd);
+        uint256 startDuration = Game(gameAddress).getStartDuration();
+        uint256 currTime = block.timestamp + startDuration + 1;
         address winner = address(0);
         for(uint256 i=0;i<iters;i++){
+            vm.warp(currTime);
             vm.prank(addr1);
             winner = Game(gameAddress).play(gameInd); 
             if(winner == address(0)){
+                vm.warp(currTime);
                 vm.prank(addr2);
                 Game(gameAddress).play(gameInd);
             }
@@ -121,10 +121,14 @@ contract CounterTest is Test {
         Game(gameAddress).joinGame(gameInd);
         address winner = address(0);
         uint256 cnt = 0;
-        while(winner == address(0) && cnt < 10000){
+        uint256 startDuration = Game(gameAddress).getStartDuration();
+        uint256 currTime = block.timestamp + startDuration + 1;
+        while(winner == address(0) && cnt < 1000){
+            vm.warp(currTime);
             vm.prank(addr1);
             winner = (Game(gameAddress).play(gameInd));
             if(winner == address(0)){
+                vm.warp(currTime);
                 vm.prank(addr2);
                 winner = (Game(gameAddress).play(gameInd));
             }
@@ -147,10 +151,14 @@ contract CounterTest is Test {
         vm.prank(addr2);
         Game(gameAddress).joinGame(gameInd);
         address winner = address(0);
+        uint256 startDuration = Game(gameAddress).getStartDuration();
+        uint256 currTime = block.timestamp + startDuration + 1;
+        vm.warp(currTime);
         vm.prank(addr1);
         winner = (Game(gameAddress).play(gameInd));
         if(winner == address(0)){
             vm.expectRevert(abi.encodeWithSelector(Game.NotYourTurn.selector, addr1, addr2));
+            vm.warp(currTime);
             vm.prank(addr1);
             winner = (Game(gameAddress).play(gameInd));
         }
@@ -246,10 +254,14 @@ contract CounterTest is Test {
         vm.prank(addr2);
         Game(gameAddress).joinGame(gameInd);
         address winner = address(0);
-        for(uint256 i=0;i<10000;i++){
+        uint256 startDuration = Game(gameAddress).getStartDuration();
+        uint256 currTime = block.timestamp + startDuration + 1;
+        for(uint256 i=0;i<1000;i++){
+            vm.warp(currTime);
             vm.prank(addr1);
             winner = (Game(gameAddress).play(gameInd));
             if(winner == address(0)){
+                vm.warp(currTime);
                 vm.prank(addr2);
                 winner = (Game(gameAddress).play(gameInd));
             }
