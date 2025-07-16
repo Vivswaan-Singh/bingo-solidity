@@ -9,6 +9,9 @@ contract Game is ReentrancyGuard{
     struct player{
         uint256 boxNo;
         uint256 bitCheck;
+        bool exists;
+        uint256 playerId;   
+        address playerAddress;
     }
 
     enum GameStatus{
@@ -21,7 +24,6 @@ contract Game is ReentrancyGuard{
 
     struct game{
         uint256 startTime;
-        address[] players;
         uint256 currPlayerInd;
         uint256 fees; 
         uint256 startDuration;
@@ -32,14 +34,14 @@ contract Game is ReentrancyGuard{
         uint256 numOfPlayers; 
     }
 
-    mapping(uint256=>mapping(address => player)) playerInfo;
+    mapping(uint256 => mapping(uint256 => player)) playerInfo;
     
     address admin;
     uint256 entryFees = 10;
     uint256 turnDuration = 5;
     uint256 startDuration = 10;
     uint256 gameNo;
-    uint256 rootSeed;
+    uint256 immutable rootSeed;
     address coins;
     mapping(uint256 => game) games;
 
@@ -57,11 +59,13 @@ contract Game is ReentrancyGuard{
     error AlreadyJoined();
     error WaitingForMorePlayers();
     error JoinTimeOver();
+    error NotFirstPlayer();
+    error NotJoined();
 
 
     event newGame(uint256 gameNo); 
     event newPlayer(uint256 boxNo);
-    event newPlay(uint256 val,address winner);
+    event newPlay(uint256 val);
     event updatedFees(uint256 fees);
     event updatedStartDuration(uint256 startDuration);
     event updatedTurnDuration(uint256 turnDuration);
@@ -78,12 +82,11 @@ contract Game is ReentrancyGuard{
         gameNo++;
         game memory currGame = games[gameNo];
         currGame.startTime = block.timestamp;
-        currGame.lastMoveTime = block.timestamp;
+        currGame.lastMoveTime = block.timestamp + startDuration;
         currGame.status = GameStatus.NoPlayers;
         currGame.startDuration = startDuration;
         currGame.turnDuration = turnDuration;
         currGame.fees = entryFees;
-        currGame.winner = address(0);
         games[gameNo] = currGame;
         emit newGame(gameNo);
         return gameNo;
@@ -91,7 +94,8 @@ contract Game is ReentrancyGuard{
 
     function joinGame(uint256 gameNum) public nonReentrant returns(uint256){
         game memory currGame = games[gameNum];
-        player memory currPlayer = playerInfo[gameNum][msg.sender];
+        uint256 playerInd = currGame.numOfPlayers;
+        player memory currPlayer = playerInfo[gameNum][playerInd];
 
         require(msg.sender != address(0), InvalidAddress());
         require((gameNo != 0 && gameNum != 0 && gameNum<=gameNo && currGame.status != GameStatus.DoesNotExist), GameDoesNotExist(gameNum));
@@ -102,18 +106,18 @@ contract Game is ReentrancyGuard{
         bool received = ERC20(coins).transferFrom(msg.sender,address(this), currGame.fees);
         require(received, EntryFeeNotPaid());
 
-        uint256 boxNum = generateBox(msg.sender,gameNum);
+        uint256 boxNum = generateBox(msg.sender, gameNum);
         currPlayer.boxNo = boxNum;
         currPlayer.bitCheck = 0; 
-        playerInfo[gameNum][msg.sender] = currPlayer;
+        currPlayer.exists = true;
+        currPlayer.playerId = playerInd;
+        currPlayer.playerAddress = msg.sender;
+        playerInfo[gameNum][playerInd] = currPlayer;
 
-
-        currGame.lastMoveTime = block.timestamp;
         currGame.status = GameStatus.NotBeingPlayedYet;
         currGame.numOfPlayers++;
 
         games[gameNum] = currGame;
-        games[gameNum].players.push(msg.sender);
 
         emit newPlayer(boxNum);
         return boxNum;
@@ -122,39 +126,44 @@ contract Game is ReentrancyGuard{
 
     function play(uint256 gameNum) public nonReentrant returns(address) {
         game memory currGame = games[gameNum];
+
         require(currGame.status != GameStatus.DoesNotExist, GameDoesNotExist(gameNum));
         require(currGame.status != GameStatus.GameOver, GameOverAlready(gameNum));
         require(block.timestamp > currGame.startTime + currGame.startDuration, WaitingForMorePlayers());
-        require((currGame.status == GameStatus.NotBeingPlayedYet || block.timestamp <= currGame.lastMoveTime + currGame.turnDuration), TurnDurationOver());
-        if(block.timestamp > currGame.lastMoveTime + currGame.turnDuration && currGame.status != GameStatus.NotBeingPlayedYet){
-            currGame.currPlayerInd+=1;
-            currGame.currPlayerInd %= currGame.numOfPlayers;
+        require(existsInGame(gameNum, msg.sender), NotJoined());
 
-            if(msg.sender != currGame.players[currGame.currPlayerInd]){
-                currGame.lastMoveTime = block.timestamp;
-                return address(0);
-            }
+        // require((currGame.status == GameStatus.NotBeingPlayedYet), TurnDurationOver());
+        // if(currGame.status == GameStatus.NotBeingPlayedYet && msg.sender != currGame.players[currGame.currPlayerInd]){
+        //     revert NotFirstPlayer(); 
+        // }
+
+        uint256 currentPlayerId = currGame.currPlayerInd;
+
+        if(block.timestamp > currGame.lastMoveTime + currGame.turnDuration){
+            currentPlayerId = (block.timestamp - (currGame.lastMoveTime + currGame.turnDuration))/currGame.turnDuration;
         }
 
-        require(msg.sender == currGame.players[currGame.currPlayerInd], NotYourTurn(msg.sender, currGame.players[currGame.currPlayerInd]));
+        require(msg.sender == playerInfo[gameNum][currentPlayerId].playerAddress, NotYourTurn(msg.sender, playerInfo[gameNum][currentPlayerId].playerAddress));
 
         currGame.status = GameStatus.BeingPlayed;   
-        address[] memory players = currGame.players;
         uint256 val = generateVal(gameNum, msg.sender);
         uint256 noOfPlayers = currGame.numOfPlayers;
 
-        for(uint256 k = 0; k < noOfPlayers; k++){
-            address currPlayer = players[k];
-            player memory temp = playerInfo[gameNum][currPlayer];
+        for(uint256 k; k < noOfPlayers;){
+            player memory temp = playerInfo[gameNum][k];
+            address currPlayer = temp.playerAddress;
             uint256 boxNum = temp.boxNo;
-            for(uint256 i = 0; i < 25; i++){
+            for(uint256 i; i < 25;){
                 if((boxNum >> (i*9) & 511) == val){
                     temp.bitCheck |= (1 << (i));
                 }
+                unchecked {
+                    i++;
+                }
             }
 
-            playerInfo[gameNum][currPlayer] = temp;
-            uint256 score = checkBox(gameNum, currPlayer);
+            playerInfo[gameNum][k] = temp;
+            uint256 score = checkBox(gameNum, k);
 
             if(score >= 5){
                 currGame.status = GameStatus.GameOver;
@@ -166,6 +175,10 @@ contract Game is ReentrancyGuard{
                 return currPlayer; 
             }
 
+            unchecked {
+                k++;
+            }
+
         }
 
         currGame.currPlayerInd += 1;
@@ -174,7 +187,7 @@ contract Game is ReentrancyGuard{
 
         games[gameNum] = currGame;
 
-        emit newPlay(val, address(0));
+        emit newPlay(val);
         return address(0);
     }
 
@@ -196,54 +209,69 @@ contract Game is ReentrancyGuard{
         emit updatedStartDuration(startDuration);
     }
 
-    function generateBox(address playerAddress, uint256 gameNum) internal view returns(uint256) {
+    function generateBox(address playerAddress, uint256 gameNum) internal view returns(uint256 boxNum) {
         uint256 seed = uint256(blockhash(block.number-1));
-        uint256 boxNum = 0;
 
-        for(uint8 i = 0; i<25; i++){
+        for(uint8 i = 0; i<25;){
             uint256 temp = (uint256(keccak256((abi.encodePacked(seed, i, playerAddress, admin, block.timestamp, rootSeed, gameNum)))))%256;
             boxNum |= (temp << (i*9));
+
+            unchecked {
+                i++;
+            }
         }
 
-        return boxNum;
     }
 
     function generateVal(uint256 gameNum, address addr) internal view returns(uint256) {
         uint256 seed = uint256(blockhash(block.number-1));
-        return (uint256(keccak256(abi.encodePacked(seed,gameNum,addr,msg.sender,block.timestamp))))%256;
+        return ((uint256(keccak256(abi.encodePacked(seed, gameNum, addr, admin, rootSeed, block.timestamp))))%256);
     }
 
-    function checkBox(uint256 gameNum, address playerAddress) internal view returns(uint256) {
-        player memory currPlayer = playerInfo[gameNum][playerAddress];
+    function checkBox(uint256 gameNum, uint256 playerInd) internal view returns(uint256) {
+        player memory currPlayer = playerInfo[gameNum][playerInd];
         uint256 mask = currPlayer.bitCheck;
-        uint256 score = 0;
+        uint256 score;
 
-        for(uint256 i = 0; i < 21; i += 5){
+        for(uint256 i; i < 21;){
             uint256 rowMask = ((1 << i) | (1 << (i+1)) | (1 << (i+2)) | (1 << (i+3)) | (1 << (i+4)));
             uint256 flagRow = (mask & rowMask); 
             if(flagRow == rowMask){
-                score++;
+                unchecked {
+                    score++;
+                }
                 if(score >= 5){
                     return score;
                 }
             }
+
+            unchecked {
+                i += 5;
+            }
         } 
 
-        for(uint256 i = 0; i < 5; i++){
+        for(uint256 i; i < 5;){
             uint256 colMask = ((1 << i) | (1 << (i+5)) | (1 << (i+10)) | (1 << (i+15)) | (1 << (i+20)));
             uint256 flagCol = (mask & colMask); 
             if(flagCol == colMask){
-                score++;
+                unchecked {
+                    score++;
+                }
                 if(score >= 5){
                     return score;
                 }
+            }
+            unchecked {
+                i++;
             }
         }
 
         uint256 diag = ((1) | (1 << 6) | (1 << 12) | (1 << 18) | (1 << 24));
 
         if((mask & diag) == diag){
-            score++;
+            unchecked {
+                score++;
+            }
             if(score >= 5){
                 return score;
             }
@@ -252,7 +280,9 @@ contract Game is ReentrancyGuard{
         uint256 revDiag = ((1 << 4) | (1 << 8) | (1 << 12) | (1 << 16) | (1 << 20));
 
         if((mask & revDiag) == revDiag){
-            score++;
+            unchecked {
+                score++;
+            }
             if(score >= 5){
                 return score;
             }
@@ -273,19 +303,19 @@ contract Game is ReentrancyGuard{
         return turnDuration;
     }
 
-    function getPlayers(uint256 gameNum) public view returns(address[] memory) {
-        return games[gameNum].players;
-    }
 
     function getWinner(uint256 gameNum) public view returns(address) {
         return games[gameNum].winner;
     }
 
     function existsInGame(uint256 gameNum, address playerAddr) internal view returns (bool) {
-        address[] memory players = getPlayers(gameNum);
-        for(uint256 i = 0; i < players.length; i++){
-            if(players[i] == playerAddr){
+        uint256 len = games[gameNum].numOfPlayers;
+        for(uint256 i; i < len;){
+            if(playerInfo[gameNum][i].playerAddress == playerAddr){
                 return true;
+            }
+            unchecked {
+                i++;
             }
         }
         return false;

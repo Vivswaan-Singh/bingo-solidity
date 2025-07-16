@@ -17,6 +17,8 @@ contract BingoTest is Test {
     address addr4;
     address addr5;
 
+    event win(address winner);
+
     function setUp() public {
         coin = new Coins();
         coinAddress = address(coin);
@@ -57,7 +59,7 @@ contract BingoTest is Test {
 
     function test_startNewGame(uint256 n) public {
         vm.assume(n>0 && n<256);
-        
+
         uint256 sum = 0;
         for(uint256 i = 0; i < n; i++){
             sum += Game(gameAddress).startNewGame();
@@ -113,20 +115,24 @@ contract BingoTest is Test {
         uint256 currTime = block.timestamp + startDuration + 1;
         address winner = address(0);
 
-        for(uint256 i=0;i<iters;i++){
+        for(uint256 i=0; i < 1000 && winner == address(0);){
             vm.warp(currTime);
             vm.prank(addr1);
-            winner = Game(gameAddress).play(gameInd); 
+            winner = (Game(gameAddress).play(gameInd));
             currTime += turnDuration;
 
             if(winner == address(0)){
                 vm.warp(currTime);
                 vm.prank(addr2);
-                Game(gameAddress).play(gameInd);
+                winner = (Game(gameAddress).play(gameInd));
                 currTime += turnDuration;
             }
             else{
                 break;
+            }
+
+            unchecked {
+                i++;
             }
         }
 
@@ -174,14 +180,17 @@ contract BingoTest is Test {
                 break;
             }
 
-            cnt++;
+            unchecked {
+                cnt++;
+            }
         }
 
-        uint256 bal1=ERC20(coinAddress).balanceOf(addr1);
-        uint256 bal2=ERC20(coinAddress).balanceOf(addr2);
-        uint256 balGame=ERC20(coinAddress).balanceOf(gameAddress);
+        uint256 bal1 = ERC20(coinAddress).balanceOf(addr1);
+        uint256 bal2 = ERC20(coinAddress).balanceOf(addr2);
+        uint256 balGame = ERC20(coinAddress).balanceOf(gameAddress);
 
         assertEq(bal1+bal2+balGame, init_bal1+init_bal2+init_balGame);
+        assertEq(winner, Game(gameAddress).getWinner(gameInd));
     }
 
     function test_playWithoutTurn() public {
@@ -211,7 +220,7 @@ contract BingoTest is Test {
             winner = (Game(gameAddress).play(gameInd));
             currTime += turnDuration;
         }
-    }
+    } 
     
     function test_updateEntryFees(uint256 fee) public {
         vm.assume(fee>0 && fee<512);
@@ -289,63 +298,5 @@ contract BingoTest is Test {
         Game(currGameAddress).updateStartDuration(duration);(duration);
     }
 
-    function test_getPlayers() public {
-        vm.prank(addr5);
-        uint256 gameInd = Game(gameAddress).startNewGame();
-
-        vm.prank(addr1);
-        Game(gameAddress).joinGame(gameInd);
-
-        vm.prank(addr2);
-        Game(gameAddress).joinGame(gameInd);
-
-        vm.prank(addr3);
-        Game(gameAddress).joinGame(gameInd);
-
-        vm.prank(addr4);
-        Game(gameAddress).joinGame(gameInd);
-
-        address[] memory addrs = Game(gameAddress).getPlayers(gameInd);
-        address[4] memory myAddrs = [addr1,addr2,addr3,addr4];
-        for(uint8 i=0;i<4;i++){
-            assertEq(addrs[i], myAddrs[i]);
-        }
-    }
-
-    function test_getWinner() public {
-        vm.prank(addr4);
-        uint256 gameInd = Game(gameAddress).startNewGame();
-
-        vm.prank(addr1);
-        Game(gameAddress).joinGame(gameInd);
-
-        vm.prank(addr2);
-        Game(gameAddress).joinGame(gameInd);
-
-        address winner = address(0);
-        uint256 startDuration = Game(gameAddress).getStartDuration();
-        uint256 turnDuration = Game(gameAddress).getTurnDuration();
-        uint256 currTime = block.timestamp + startDuration + 1;
-
-        for(uint256 i=0;i<1000;i++){
-            vm.warp(currTime);
-            vm.prank(addr1);
-            winner = (Game(gameAddress).play(gameInd));
-            currTime += turnDuration;
-
-            if(winner == address(0)){
-                vm.warp(currTime);
-                vm.prank(addr2);
-                winner = (Game(gameAddress).play(gameInd));
-                currTime += turnDuration;
-            }
-            else{
-                break;
-            }
-        }
-
-        assertEq(winner, Game(gameAddress).getWinner(gameInd));
-        
-    }
 
 }
