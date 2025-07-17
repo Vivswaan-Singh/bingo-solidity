@@ -4,13 +4,15 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+/// @title Bingo Game Contract
+/// @author Vivswaan Singh
+/// @notice This contract implements a Bingo game, where players can join a game for a specific fees, receive a randomised board and then get reward if they win the game
+/// @dev Uses bitmasking for checking win conditions and stores all board numbers in a packed uint256
 contract Game is ReentrancyGuard{
     
     struct player{
         uint256 boxNo;
         uint256 bitCheck;
-        bool exists;
-        uint256 playerId;   
         address playerAddress;
     }
 
@@ -35,6 +37,7 @@ contract Game is ReentrancyGuard{
     }
 
     mapping(uint256 => mapping(uint256 => player)) playerInfo;
+    mapping(uint256 => mapping(address => bool)) doesPlayerExist;
     
     address admin;
     uint256 entryFees = 10;
@@ -63,14 +66,30 @@ contract Game is ReentrancyGuard{
     error NotJoined();
 
 
+    /// @dev Emitted when a new game is created
     event newGame(uint256 gameNo); 
+
+    /// @dev Emitted when a player joins a game
     event newPlayer(uint256 boxNo);
+
+    /// @dev Emitted during a turn 
     event newPlay(uint256 val);
+
+    /// @dev Emitted when admin updates the entry fees value for any future games
     event updatedFees(uint256 fees);
+
+    /// @dev Emitted when admin updates the start duration value for any future games
     event updatedStartDuration(uint256 startDuration);
+
+    /// @dev Emitted when admin updates the turn duration value for any future games
     event updatedTurnDuration(uint256 turnDuration);
+    
+    /// @dev Emitted when someone wins a game
     event winner(address winnerAddress, uint256 gameNo);
 
+    /// @notice Initialises the Game contract
+    /// @param _coins Address of ERC20 token to be used as fee and reward
+    /// @param _rootSeed A root randomness seed used for board generation 
     constructor(address _coins, uint256 _rootSeed) {
         admin = msg.sender;
         rootSeed = _rootSeed;
@@ -78,10 +97,13 @@ contract Game is ReentrancyGuard{
         gameNo = 0;
     }
 
+    /// @notice Starts a new game instance and returns its Game ID
+    /// @dev Game is initialised with default parameters and will allow players to join until startDuration
+    /// @return gameNo The ID of the newly initialised game
     function startNewGame() public returns (uint256) {
         gameNo++;
-        game memory currGame = games[gameNo];
-        currGame.startTime = block.timestamp;
+        game memory currGame = games[gameNo]; 
+        currGame.startTime = block.timestamp; 
         currGame.lastMoveTime = block.timestamp + startDuration;
         currGame.status = GameStatus.NoPlayers;
         currGame.startDuration = startDuration;
@@ -92,6 +114,9 @@ contract Game is ReentrancyGuard{
         return gameNo;
     }
 
+    /// @notice Allows a player to join an open game by paying the required entry fees
+    /// @param gameNum ID of the game player wants to join
+    /// @return boxNum The 5x5 bingo board represented in a packed uint256 
     function joinGame(uint256 gameNum) public nonReentrant returns(uint256){
         game memory currGame = games[gameNum];
         uint256 playerInd = currGame.numOfPlayers;
@@ -101,7 +126,7 @@ contract Game is ReentrancyGuard{
         require((gameNo != 0 && gameNum != 0 && gameNum<=gameNo && currGame.status != GameStatus.DoesNotExist), GameDoesNotExist(gameNum));
         require(block.timestamp <= currGame.startDuration + currGame.startTime, JoinTimeOver());  
         require(currGame.status != GameStatus.GameOver, GameOverAlready(gameNum));
-        require(!existsInGame(gameNum, msg.sender), AlreadyJoined());
+        require(!doesPlayerExist[gameNum][msg.sender], AlreadyJoined());
         
         bool received = ERC20(coins).transferFrom(msg.sender,address(this), currGame.fees);
         require(received, EntryFeeNotPaid());
@@ -109,8 +134,6 @@ contract Game is ReentrancyGuard{
         uint256 boxNum = generateBox(msg.sender, gameNum);
         currPlayer.boxNo = boxNum;
         currPlayer.bitCheck = 0; 
-        currPlayer.exists = true;
-        currPlayer.playerId = playerInd;
         currPlayer.playerAddress = msg.sender;
         playerInfo[gameNum][playerInd] = currPlayer;
 
@@ -118,19 +141,23 @@ contract Game is ReentrancyGuard{
         currGame.numOfPlayers++;
 
         games[gameNum] = currGame;
+        doesPlayerExist[gameNum][msg.sender] = true;
 
         emit newPlayer(boxNum);
         return boxNum;
 
     }
 
+    /// @notice Allows the player to take a turn in a game they have joined
+    /// @param gameNum ID of the game player wants to play
+    /// @return winner Address of the winner or address(0) in case no one has won yet 
     function play(uint256 gameNum) public nonReentrant returns(address) {
         game memory currGame = games[gameNum];
 
         require(currGame.status != GameStatus.DoesNotExist, GameDoesNotExist(gameNum));
         require(currGame.status != GameStatus.GameOver, GameOverAlready(gameNum));
         require(block.timestamp > currGame.startTime + currGame.startDuration, WaitingForMorePlayers());
-        require(existsInGame(gameNum, msg.sender), NotJoined());
+        require(doesPlayerExist[gameNum][msg.sender], NotJoined());
 
         // require((currGame.status == GameStatus.NotBeingPlayedYet), TurnDurationOver());
         // if(currGame.status == GameStatus.NotBeingPlayedYet && msg.sender != currGame.players[currGame.currPlayerInd]){
@@ -191,24 +218,34 @@ contract Game is ReentrancyGuard{
         return address(0);
     }
 
+    /// @notice Updates the entry fees amount for any future games
+    /// @param fees The new entry fees amount
     function updateEntryFees(uint256 fees) public {
         require(msg.sender == admin, NotAdmin());
         entryFees = fees;
         emit updatedFees(entryFees);
     }
 
+    /// @notice Updates the turn duration for any future games
+    /// @param duration The new turn duration value
     function updateTurnDuration(uint256 duration) public {
         require(msg.sender == admin, NotAdmin());
         turnDuration = duration;
         emit updatedTurnDuration(turnDuration);
     }
 
+    /// @notice Updates the start duration for any future games
+    /// @param duration The new start duration value
     function updateStartDuration(uint256 duration) public {
         require(msg.sender == admin, NotAdmin());
         startDuration = duration;
         emit updatedStartDuration(startDuration);
     }
 
+    /// @dev Generates a pseudo random 5x5 bingo board using blockhash and keccak256
+    /// @param playerAddress Address of the player
+    /// @param gameNum ID of the game
+    /// @return boxNum The 5x5 board stored in the form of a single uint256 by packing each number into 9 bits each
     function generateBox(address playerAddress, uint256 gameNum) internal view returns(uint256 boxNum) {
         uint256 seed = uint256(blockhash(block.number-1));
 
@@ -223,11 +260,19 @@ contract Game is ReentrancyGuard{
 
     }
 
+    /// @dev Generates a pseudo random value in the range 0-255 using blockhash and keccak256
+    /// @param gameNum ID of the game
+    /// @param addr Address of the player
+    /// @return boxNum The 5x5 board stored in the form of a single uint256 by packing each number into 9 bits each
     function generateVal(uint256 gameNum, address addr) internal view returns(uint256) {
         uint256 seed = uint256(blockhash(block.number-1));
         return ((uint256(keccak256(abi.encodePacked(seed, gameNum, addr, admin, rootSeed, block.timestamp))))%256);
     }
 
+    /// @dev Checks the player's bingo board for any completed rows, columns and diagonals
+    /// @param gameNum ID of the game
+    /// @param playerInd ID of the player
+    /// @return score The number of filled lines on the bingo board i.e. bingo score
     function checkBox(uint256 gameNum, uint256 playerInd) internal view returns(uint256) {
         player memory currPlayer = playerInfo[gameNum][playerInd];
         uint256 mask = currPlayer.bitCheck;
@@ -291,19 +336,28 @@ contract Game is ReentrancyGuard{
         return score;
     }
 
+    /// @notice Returns the current entry fees
+    /// @return entryFees The fees that needs to be paid to join a game
     function getEntryFees() external view returns(uint256){
         return entryFees;
     }
 
+    /// @notice Returns the current start duration
+    /// @return startDuration The time duration for which new players can join a game starting from its initialisation
     function getStartDuration() external view returns(uint256){
         return startDuration;
     }
 
+    /// @notice Returns the current turn duration
+    /// @return turnDuration The time duration of each player's turn 
     function getTurnDuration() external view returns(uint256){
         return turnDuration;
     }
 
 
+    /// @notice Returns the winner for a specific game
+    /// @param gameNum The ID of the game whose winner user wants to know
+    /// @return winner The address of the winner or address(0) if no one has won yet 
     function getWinner(uint256 gameNum) public view returns(address) {
         return games[gameNum].winner;
     }
